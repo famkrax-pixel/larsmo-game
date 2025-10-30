@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Larsmo Game (OpenStreetMap)</title>
+  <style>
+    html,body{
+      height:100%; margin:0; background:#111; font-family:Arial, sans-serif;
+    }
+    #game-container{width:100%;height:100vh;overflow:hidden;position:relative;}
+    #minimap{
+      position:absolute;right:12px;top:12px;width:180px;height:120px;
+      border:2px solid rgba(255,255,255,0.15);border-radius:8px;
+      overflow:hidden;z-index:50;
+    }
+    @media(max-width:600px){
+      #minimap{width:120px;height:80px;right:8px;top:8px;}
+    }
+  </style>
+
+  <!-- Phaser 3 -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+
+  <!-- Leaflet (OpenStreetMap) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+  <div id="game-container"></div>
+  <div id="minimap"></div>
+
+  <script>
+  // ---------- Minimap (OpenStreetMap) ----------
+  const LARSMO_COORDS = [63.585, 22.678];
+  function initMiniMap(){
+    const map = L.map('minimap', {
+      center: LARSMO_COORDS,
+      zoom: 14,
+      zoomControl:false,
+      attributionControl:false,
+      dragging:false,
+      scrollWheelZoom:false,
+      doubleClickZoom:false
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom:19
+    }).addTo(map);
+    const marker = L.marker(LARSMO_COORDS).addTo(map);
+    window.MINI_MAP={
+      updatePosition:(lat,lng)=>{
+        marker.setLatLng([lat,lng]);
+        map.panTo([lat,lng]);
+      }
+    };
+  }
+  window.addEventListener('load', initMiniMap);
+
+  // ---------- Spelet ----------
+  const config={
+    type:Phaser.AUTO,
+    parent:'game-container',
+    width:window.innerWidth,
+    height:window.innerHeight,
+    physics:{default:'arcade'},
+    scene:{preload,create,update},
+    scale:{mode:Phaser.Scale.RESIZE,autoCenter:Phaser.Scale.CENTER_BOTH}
+  };
+  const game=new Phaser.Game(config);
+  let player,cursors,dayTime=12,timeSpeed=0.01,weather='clear';
+
+  function preload(){
+    this.textures.generate('ground',{data:['#0f0'],pixelWidth:16});
+    this.textures.generate('car',{data:['#ff0'],pixelWidth:16});
+    this.textures.generate('raindrop',{data:['#0ff'],pixelWidth:4});
+    this.textures.generate('snow',{data:['#fff'],pixelWidth:4});
+  }
+
+  function create(){
+    const bg=this.add.tileSprite(0,0,4000,4000,'ground').setOrigin(0);
+    player=this.physics.add.sprite(400,300,'car').setScale(1);
+    player.setCollideWorldBounds(true);
+    player.speed=200;
+    cursors=this.input.keyboard.createCursorKeys();
+
+    this.nightOverlay=this.add.rectangle(0,0,this.scale.width,this.scale.height,0x000000)
+      .setOrigin(0).setDepth(10).setScrollFactor(0).setAlpha(0);
+
+    this.weatherEmitter=this.add.particles('raindrop').createEmitter({
+      x:{min:0,max:this.scale.width},y:{min:-100,max:-10},
+      speedY:{min:300,max:600},quantity:5,lifespan:2000,
+      scale:{start:0.5,end:0.5},on:false,depth:9
+    });
+
+    this.input.addPointer(2);
+    this.dayText=this.add.text(16,16,'',{fontSize:'18px',color:'#fff'})
+      .setScrollFactor(0).setDepth(20);
+    setWeather.call(this,weather);
+  }
+
+  function update(time,delta){
+    player.setVelocity(0);
+    if(cursors.left.isDown)player.setVelocityX(-player.speed);
+    if(cursors.right.isDown)player.setVelocityX(player.speed);
+    if(cursors.up.isDown)player.setVelocityY(-player.speed);
+    if(cursors.down.isDown)player.setVelocityY(player.speed);
+
+    if(this.input.pointer1.isDown){
+      const p=this.input.pointer1;
+      if(p.x<this.scale.width/2)player.setVelocityX(-player.speed);
+      else player.setVelocityX(player.speed);
+    }
+
+    // Dag/natt
+    dayTime+=timeSpeed*(delta/16.67);
+    if(dayTime>=24)dayTime-=24;
+    let alpha=0;
+    if(dayTime>=19||dayTime<=6){
+      const dist=(dayTime>=19)?(dayTime-19):(6-dayTime);
+      alpha=Math.min(0.7,0.7*(1-(dist/7)));
+    }
+    this.nightOverlay.alpha=alpha;
+    const hh=Math.floor(dayTime);
+    this.dayText.setText(`Tid: ${hh}:00  Väder: ${weather}`);
+
+    // Uppdatera minikarta
+    if(window.MINI_MAP){
+      const lat=63.585+((player.y-300)/10000);
+      const lng=22.678+((player.x-400)/10000);
+      window.MINI_MAP.updatePosition(lat,lng);
+    }
+  }
+
+  function setWeather(w){
+    weather=w;
+    if(!this.weatherEmitter)return;
+    if(w==='rain'){
+      this.weatherEmitter.start();
+      this.weatherEmitter.setFrame('raindrop');
+      this.weatherEmitter.setSpeedY({min:500,max:800});
+    }else if(w==='snow'){
+      this.weatherEmitter.setFrame('snow');
+      this.weatherEmitter.setSpeedY({min:100,max:200});
+      this.weatherEmitter.start();
+    }else{
+      this.weatherEmitter.stop();
+    }
+  }
+
+  window.SPAWN={
+    setWeather:(w)=>setWeather.call(game.scene.scenes[0],w),
+    setTimeSpeed:(s)=>{timeSpeed=s;}
+  };
+  </script>
+</body>
+</html>
