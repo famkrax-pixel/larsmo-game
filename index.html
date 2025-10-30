@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Larsmo 3D Game</title>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.123/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.123/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    html, body, #cesiumContainer {
+      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+    }
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.5);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <div id="hud">🚗 Larsmo 3D – använd musen eller fingret för att röra dig</div>
+
+  <script>
+    // === Ange din Cesium Ion Access Token här ===
+    Cesium.Ion.defaultAccessToken = "DIN_TOKEN_HÄR";
+
+    // Skapa kartan
+    const viewer = new Cesium.Viewer("cesiumContainer", {
+      terrain: Cesium.Terrain.fromWorldTerrain(),
+      animation: false,
+      timeline: false,
+      baseLayerPicker: false,
+      sceneModePicker: false
+    });
+
+    // Centrera kartan på Larsmo
+    const larsmo = Cesium.Cartesian3.fromDegrees(22.678, 63.585, 250);
+    viewer.camera.flyTo({ destination: larsmo });
+
+    // Lägg till 3D-byggnader
+    viewer.scene.primitives.add(Cesium.createOsmBuildings());
+
+    // Skapa "spelare" (en liten bil)
+    const player = viewer.entities.add({
+      name: "Bil",
+      position: Cesium.Cartesian3.fromDegrees(22.678, 63.585, 5),
+      model: {
+        uri: "https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models/2.0/Car/glTF/Car.gltf",
+        minimumPixelSize: 64
+      }
+    });
+
+    // Enkel styrning med piltangenter
+    const moveRate = 0.0005;
+    document.addEventListener("keydown", (e)=>{
+      const pos = Cesium.Cartographic.fromCartesian(player.position.getValue(Cesium.JulianDate.now()));
+      if(e.key==="ArrowUp") pos.latitude += moveRate;
+      if(e.key==="ArrowDown") pos.latitude -= moveRate;
+      if(e.key==="ArrowLeft") pos.longitude -= moveRate;
+      if(e.key==="ArrowRight") pos.longitude += moveRate;
+      player.position = Cesium.Cartesian3.fromRadians(pos.longitude, pos.latitude, pos.height);
+      viewer.camera.flyTo({ destination: player.position._value, duration: 0.1 });
+    });
+  </script>
+</body>
+</html>
